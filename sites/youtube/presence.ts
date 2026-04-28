@@ -17,10 +17,6 @@ var POLL = 3000
 var lastKey = ''
 var timer: ReturnType<typeof setInterval> | null = null
 
-function isWatching(): boolean {
-  return window.location.pathname === '/watch'
-}
-
 function getVideo(): HTMLVideoElement | null {
   return (
     document.querySelector<HTMLVideoElement>('video.html5-main-video') ??
@@ -54,41 +50,66 @@ function getChannel(): string | null {
   return null
 }
 
-function isLive(): boolean {
-  const video = getVideo()
-  if (!video || isNaN(video.duration)) return false
+function isLiveStream(video: HTMLVideoElement): boolean {
   return !isFinite(video.duration)
 }
 
-function getThumbnail(): string | undefined {
+function getThumbnail(videoId: string | null): string | undefined {
   const og = document.querySelector<HTMLMetaElement>('meta[property="og:image"]')
   if (og?.content?.startsWith('https://')) return og.content
-  const videoId = new URLSearchParams(window.location.search).get('v')
   if (videoId) return 'https://i.ytimg.com/vi/' + videoId + '/maxresdefault.jpg'
   return undefined
 }
 
 function scrape() {
-  if (!isWatching()) return null
+  const path = window.location.pathname
+  const params = new URLSearchParams(window.location.search)
 
-  const video = getVideo()
-  if (!video || isNaN(video.duration)) return null
+  if (path === '/watch') {
+    const video = getVideo()
+    if (!video || isNaN(video.duration)) return null
 
-  const title = getTitle()
-  if (!title) return null
+    const title = getTitle()
+    if (!title) return null
 
-  const live = isLive()
-  const channel = getChannel()
+    const live = isLiveStream(video)
 
+    return {
+      type: (live ? 'live' : 'video') as 'live' | 'video',
+      title,
+      episodeTitle: getChannel() ?? undefined,
+      currentTime: live ? 0 : Math.floor(video.currentTime),
+      duration: live ? 0 : Math.floor(video.duration),
+      isLive: live,
+      paused: video.paused,
+      imageUrl: getThumbnail(params.get('v'))
+    }
+  }
+
+  if (path === '/results') {
+    const query = params.get('search_query')
+    return {
+      type: 'video' as const,
+      title: 'YouTube',
+      episodeTitle: query ? 'Searching: ' + query : 'Searching...',
+      currentTime: 0,
+      duration: 0,
+      isLive: false,
+      paused: false,
+      imageUrl: undefined
+    }
+  }
+
+  // Homepage, subscriptions, channel pages, etc.
   return {
-    type: (live ? 'live' : 'video') as 'live' | 'video',
-    title,
-    episodeTitle: channel ?? undefined,
-    currentTime: live ? 0 : Math.floor(video.currentTime),
-    duration: live ? 0 : Math.floor(video.duration),
-    isLive: live,
-    paused: video.paused,
-    imageUrl: getThumbnail()
+    type: 'video' as const,
+    title: 'YouTube',
+    episodeTitle: 'Browsing...',
+    currentTime: 0,
+    duration: 0,
+    isLive: false,
+    paused: false,
+    imageUrl: undefined
   }
 }
 
@@ -96,9 +117,8 @@ function poll(): void {
   const data = scrape()
   if (data) {
     const k = JSON.stringify({
-      t: data.title,
-      l: data.isLive,
-      p: data.paused,
+      t: data.title, e: data.episodeTitle,
+      l: data.isLive, p: data.paused,
       c: data.isLive ? 0 : Math.floor(data.currentTime / 5)
     })
     if (k !== lastKey) { lastKey = k; report(data) }
@@ -116,16 +136,17 @@ function stopPoll(): void {
   timer = null; lastKey = ''; clear()
 }
 
-function check(): void {
-  if (isWatching()) { if (!timer) setTimeout(startPoll, 1000) }
-  else if (timer) stopPoll()
+// On navigation, reset the key so the next poll reports immediately
+function onNav(): void {
+  lastKey = ''
+  poll()
 }
 
-if (isWatching()) setTimeout(startPoll, 1000)
+setTimeout(startPoll, 1000)
 
 const _orig = history.pushState.bind(history)
-history.pushState = function() { _orig.apply(history, arguments as any); setTimeout(check, 100) }
-window.addEventListener('popstate', () => setTimeout(check, 100))
+history.pushState = function() { _orig.apply(history, arguments as any); setTimeout(onNav, 100) }
+window.addEventListener('popstate', () => setTimeout(onNav, 100))
 
 // @ts-ignore — runs as a module factory function body, top-level return is valid at runtime
 return function cleanup() {
