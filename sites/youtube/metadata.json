@@ -1,0 +1,12 @@
+{
+  "id": "youtube",
+  "name": "YouTube",
+  "description": "Show what you're watching on YouTube",
+  "author": "QuestRPC",
+  "version": "1.0.0",
+  "color": "#FF0000",
+  "logo": "https://raw.githubusercontent.com/questrpc/presences/main/sites/youtube/logo.png",
+  "category": "video",
+  "clientId": "1498821960522666224",
+  "matches": ["*://*.youtube.com/*"]
+}
