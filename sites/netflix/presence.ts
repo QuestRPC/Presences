@@ -17,9 +17,58 @@ var POLL = 5000
 var lastKey = ''
 var timer: ReturnType<typeof setInterval> | null = null
 
+var TITLE_SEL = [
+  '[data-uia="video-title"] h4',
+  '.ellipsize-text h4',
+  '.watch-video--player-view h4',
+  '.VideoContainer h4'
+]
+var SUB_SEL = [
+  '[data-uia="video-title"] span:last-child',
+  '.ellipsize-text span:last-child'
+]
+
+function qf(sels: string[]): string | null {
+  for (const sel of sels) {
+    const el = document.querySelector(sel)
+    const t = el?.textContent?.trim()
+    if (t) return t
+  }
+  return null
+}
+
 function getMovieId(): string | null {
   const m = window.location.pathname.match(/\/watch\/(\d+)/)
   return m ? m[1] : null
+}
+
+function onWatch(): boolean {
+  return window.location.pathname.startsWith('/watch')
+}
+
+function detectLive(video: HTMLVideoElement): boolean {
+  if (!isFinite(video.duration)) return true
+  if (video.duration > 21600) return true
+  return false
+}
+
+function parseEp(text: string): { season?: number; episode?: number } {
+  const m = text.match(/S(\d+)[:\s]*E(\d+)/i) || text.match(/Season\s+(\d+).*?Episode\s+(\d+)/i)
+  return m ? { season: parseInt(m[1], 10), episode: parseInt(m[2], 10) } : {}
+}
+
+function getDomImage(): string | undefined {
+  const og = document.querySelector<HTMLMetaElement>('meta[property="og:image"]')
+  if (og?.content?.startsWith('https://') && !og.content.includes('nflx-static') && !og.content.includes('/default')) {
+    return og.content
+  }
+  let best: string | undefined, bestArea = 0
+  for (const img of document.querySelectorAll<HTMLImageElement>('img')) {
+    if (!/nflxso\.net|nflximg\.net|nflximg\.com/.test(img.src)) continue
+    const area = img.naturalWidth * img.naturalHeight
+    if (area > bestArea) { bestArea = area; best = img.src }
+  }
+  return best
 }
 
 async function fetchMeta(movieId: string): Promise<any> {
@@ -35,58 +84,65 @@ async function fetchMeta(movieId: string): Promise<any> {
   }
 }
 
-function detectLive(video: HTMLVideoElement): boolean {
-  if (!isFinite(video.duration)) return true
-  if (video.duration > 21600) return true
-  return false
-}
-
 function findEpisode(seasons: any[], episodeId: number): { season: number; episode: number; title: string } | null {
   for (const s of seasons) {
-    for (const ep of s.episodes || []) {
-      if (ep.id === episodeId) {
-        return { season: s.seq, episode: ep.seq, title: ep.title }
-      }
+    for (const ep of (s.episodes || [])) {
+      if (ep.id === episodeId) return { season: s.seq, episode: ep.seq, title: ep.title }
     }
   }
   return null
 }
 
-function getBestArtwork(artwork: any[]): string | undefined {
-  if (!Array.isArray(artwork) || artwork.length === 0) return undefined
-  return artwork.reduce((best: any, cur: any) => (cur.w > best.w ? cur : best)).url
+function getBestImage(arr: any[]): string | undefined {
+  if (!Array.isArray(arr) || arr.length === 0) return undefined
+  return arr.reduce((a: any, b: any) => (b.w > a.w ? b : a)).url
 }
 
 async function scrape() {
-  const movieId = getMovieId()
-  if (!movieId) return null
+  if (!onWatch()) return null
 
   const video = document.querySelector<HTMLVideoElement>('video')
   if (!video || isNaN(video.duration)) return null
 
   const live = detectLive(video)
-  const meta = await fetchMeta(movieId)
-  if (!meta?.video) return null
 
-  const v = meta.video
-  const title: string = v.title
-  if (!title) return null
+  // --- DOM baseline (always works) ---
+  const domTitle = qf(TITLE_SEL) || document.title.replace(/\s*[|–\-]\s*Netflix\s*$/i, '').trim()
+  if (!domTitle) return null
 
-  const type: 'movie' | 'episode' = v.type === 'show' ? 'episode' : 'movie'
-  let season: number | undefined
-  let episode: number | undefined
-  let episodeTitle: string | undefined
+  const sub = qf(SUB_SEL)
+  let type: 'movie' | 'episode' = 'movie'
+  let season: number | undefined, episode: number | undefined, episodeTitle: string | undefined
 
-  if (type === 'episode' && v.currentEpisode) {
-    const found = findEpisode(v.seasons || [], v.currentEpisode)
-    if (found) {
-      season = found.season
-      episode = found.episode
-      episodeTitle = found.title
+  if (sub) {
+    const ep = parseEp(sub)
+    if (ep.season != null) {
+      type = 'episode'
+      season = ep.season
+      episode = ep.episode
+      const em = sub.match(/S\d+[:\s]*E\d+\s*[–·\-]?\s*(.+)/i)
+      episodeTitle = em ? em[1].trim() : undefined
     }
   }
 
-  const imageUrl = getBestArtwork(v.artwork) ?? getBestArtwork(v.boxart)
+  let title = domTitle
+  let imageUrl = getDomImage()
+
+  // --- API enrichment (best-effort) ---
+  const movieId = getMovieId()
+  if (movieId) {
+    const meta = await fetchMeta(movieId)
+    const v = meta?.video
+    if (v) {
+      if (v.title) title = v.title
+      if (v.type === 'show') type = 'episode'
+      if (type === 'episode' && v.currentEpisode) {
+        const found = findEpisode(v.seasons || [], v.currentEpisode)
+        if (found) { season = found.season; episode = found.episode; episodeTitle = found.title }
+      }
+      imageUrl = getBestImage(v.artwork) ?? getBestImage(v.boxart) ?? imageUrl
+    }
+  }
 
   return {
     type, title, episodeTitle, season, episode,
@@ -112,19 +168,13 @@ async function poll(): Promise<void> {
   }
 }
 
-function onWatch(): boolean {
-  return window.location.pathname.startsWith('/watch')
-}
-
 function startPoll(): void {
   if (!timer) { timer = setInterval(poll, POLL); poll() }
 }
 
 function stopPoll(): void {
   if (timer) clearInterval(timer)
-  timer = null
-  lastKey = ''
-  clear()
+  timer = null; lastKey = ''; clear()
 }
 
 function check(): void {
