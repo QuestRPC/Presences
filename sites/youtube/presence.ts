@@ -1,5 +1,5 @@
 declare function report(data: {
-  type: 'movie' | 'episode'
+  type: 'movie' | 'episode' | 'video' | 'live'
   title: string
   episodeTitle?: string
   season?: number
@@ -81,7 +81,7 @@ function scrape() {
   const channel = getChannel()
 
   return {
-    type: 'movie' as const,
+    type: (live ? 'live' : 'video') as 'live' | 'video',
     title,
     episodeTitle: channel ?? undefined,
     currentTime: live ? 0 : Math.floor(video.currentTime),
