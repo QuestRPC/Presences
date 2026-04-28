@@ -1,0 +1,12 @@
+{
+  "id": "netflix",
+  "name": "Netflix",
+  "description": "Show what you're watching on Netflix",
+  "author": "QuestRPC",
+  "version": "1.0.0",
+  "color": "#E50914",
+  "logo": "https://raw.githubusercontent.com/questrpc/presences/main/presences/netflix/logo.png",
+  "category": "video",
+  "clientId": "1498487795516313641",
+  "matches": ["*://*.netflix.com/*"]
+}
