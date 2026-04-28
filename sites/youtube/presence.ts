@@ -22,26 +22,31 @@ function isWatching(): boolean {
 }
 
 function getVideo(): HTMLVideoElement | null {
-  return document.querySelector<HTMLVideoElement>('video.html5-main-video')
+  return (
+    document.querySelector<HTMLVideoElement>('video.html5-main-video') ??
+    document.querySelector<HTMLVideoElement>('video')
+  )
 }
 
 function getTitle(): string | null {
   for (const sel of [
+    'ytd-watch-metadata h1 yt-formatted-string',
+    '#above-the-fold h1 yt-formatted-string',
     'h1.ytd-watch-metadata yt-formatted-string',
-    'h1.ytd-video-primary-info-renderer yt-formatted-string',
-    'h1.title'
+    'h1.ytd-video-primary-info-renderer yt-formatted-string'
   ]) {
     const t = document.querySelector<HTMLElement>(sel)?.textContent?.trim()
     if (t) return t
   }
-  return null
+  const docTitle = document.title.replace(/\s*-\s*YouTube\s*$/i, '').trim()
+  return docTitle || null
 }
 
 function getChannel(): string | null {
   for (const sel of [
     'ytd-video-owner-renderer #channel-name a',
-    '#channel-name a',
-    'ytd-channel-name a'
+    '#owner #channel-name a',
+    '#channel-name a'
   ]) {
     const t = document.querySelector<HTMLElement>(sel)?.textContent?.trim()
     if (t) return t
@@ -65,7 +70,7 @@ function scrape() {
   if (!isWatching()) return null
 
   const video = getVideo()
-  if (!video || isNaN(video.duration) || video.duration === 0) return null
+  if (!video || isNaN(video.duration)) return null
 
   const title = getTitle()
   if (!title) return null
@@ -120,7 +125,7 @@ const _orig = history.pushState.bind(history)
 history.pushState = function() { _orig.apply(history, arguments as any); setTimeout(check, 100) }
 window.addEventListener('popstate', () => setTimeout(check, 100))
 
-// @ts-ignore — runs as a new Function() body, top-level return is valid at runtime
+// @ts-ignore — runs as a module factory function body, top-level return is valid at runtime
 return function cleanup() {
   stopPoll()
   history.pushState = _orig
