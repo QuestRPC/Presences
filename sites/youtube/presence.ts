@@ -55,7 +55,9 @@ function getChannel(): string | null {
 }
 
 function isLive(): boolean {
-  return !!document.querySelector('.ytp-live-badge')
+  const video = getVideo()
+  if (!video || isNaN(video.duration)) return false
+  return !isFinite(video.duration)
 }
 
 function getThumbnail(): string | undefined {
