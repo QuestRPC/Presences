@@ -25,7 +25,7 @@ function getMovieId(): string | null {
 async function fetchMeta(movieId: string): Promise<any> {
   try {
     const res = await fetch(
-      `https://www.netflix.com/nq/website/memberapi/release/metadata?movieid=${movieId}`,
+      'https://www.netflix.com/nq/website/memberapi/release/metadata?movieid=' + movieId,
       { credentials: 'include' }
     )
     if (!res.ok) return null
@@ -41,6 +41,22 @@ function detectLive(video: HTMLVideoElement): boolean {
   return false
 }
 
+function findEpisode(seasons: any[], episodeId: number): { season: number; episode: number; title: string } | null {
+  for (const s of seasons) {
+    for (const ep of s.episodes || []) {
+      if (ep.id === episodeId) {
+        return { season: s.seq, episode: ep.seq, title: ep.title }
+      }
+    }
+  }
+  return null
+}
+
+function getBestArtwork(artwork: any[]): string | undefined {
+  if (!Array.isArray(artwork) || artwork.length === 0) return undefined
+  return artwork.reduce((best: any, cur: any) => (cur.w > best.w ? cur : best)).url
+}
+
 async function scrape() {
   const movieId = getMovieId()
   if (!movieId) return null
@@ -50,42 +66,30 @@ async function scrape() {
 
   const live = detectLive(video)
   const meta = await fetchMeta(movieId)
+  if (!meta?.video) return null
 
-  if (!meta) return null
-
-  const videoData = meta?.value?.videos?.[movieId]
-  if (!videoData) return null
-
-  const title: string = videoData.title
+  const v = meta.video
+  const title: string = v.title
   if (!title) return null
 
-  let type: 'movie' | 'episode' = videoData.type === 'show' ? 'episode' : 'movie'
+  const type: 'movie' | 'episode' = v.type === 'show' ? 'episode' : 'movie'
   let season: number | undefined
   let episode: number | undefined
   let episodeTitle: string | undefined
-  let imageUrl: string | undefined
 
-  if (type === 'episode') {
-    const episodeId = videoData.currentEpisode
-    const episodeData = meta?.value?.episodes?.[episodeId]
-    if (episodeData) {
-      season = episodeData.season_num
-      episode = episodeData.seq_num
-      episodeTitle = episodeData.title
+  if (type === 'episode' && v.currentEpisode) {
+    const found = findEpisode(v.seasons || [], v.currentEpisode)
+    if (found) {
+      season = found.season
+      episode = found.episode
+      episodeTitle = found.title
     }
   }
 
-  const boxarts = videoData.boxart ?? videoData.boxarts
-  if (Array.isArray(boxarts) && boxarts.length > 0) {
-    imageUrl = boxarts[0].url
-  }
+  const imageUrl = getBestArtwork(v.artwork) ?? getBestArtwork(v.boxart)
 
   return {
-    type,
-    title,
-    episodeTitle,
-    season,
-    episode,
+    type, title, episodeTitle, season, episode,
     currentTime: live ? 0 : Math.floor(video.currentTime),
     duration: live ? 0 : Math.floor(video.duration),
     isLive: live,
@@ -134,6 +138,7 @@ const _orig = history.pushState.bind(history)
 history.pushState = function () { _orig.apply(history, arguments as any); setTimeout(check, 100) }
 window.addEventListener('popstate', () => setTimeout(check, 100))
 
+// @ts-ignore — runs as a new Function() body, top-level return is valid at runtime
 return function cleanup() {
   stopPoll()
   history.pushState = _orig
