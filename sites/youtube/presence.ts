@@ -96,7 +96,7 @@ function scrape() {
       duration: 0,
       isLive: false,
       paused: false,
-      imageUrl: undefined
+      imageUrl: 'logo'
     }
   }
 
@@ -109,7 +109,7 @@ function scrape() {
     duration: 0,
     isLive: false,
     paused: false,
-    imageUrl: undefined
+    imageUrl: 'logo'
   }
 }
 
