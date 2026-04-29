@@ -51,13 +51,15 @@ function getChannel(): string | null {
 }
 
 function isLiveStream(video: HTMLVideoElement): boolean {
-  return !isFinite(video.duration)
+  if (!isFinite(video.duration)) return true
+  // Live DVR windows have a finite duration — check the badge instead
+  const badge = document.querySelector('.ytp-live-badge')
+  return !!badge && !badge.hasAttribute('disabled')
 }
 
 function getThumbnail(videoId: string | null): string | undefined {
-  const og = document.querySelector<HTMLMetaElement>('meta[property="og:image"]')
-  if (og?.content?.startsWith('https://')) return og.content
-  if (videoId) return 'https://i.ytimg.com/vi/' + videoId + '/maxresdefault.jpg'
+  // Use the video ID directly — og:image lags on SPA navigation
+  if (videoId) return 'https://i.ytimg.com/vi/' + videoId + '/hqdefault.jpg'
   return undefined
 }
 
