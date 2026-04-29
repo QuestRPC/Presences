@@ -52,9 +52,9 @@ function getChannel(): string | null {
 
 function isLiveStream(video: HTMLVideoElement): boolean {
   if (!isFinite(video.duration)) return true
-  // Live DVR windows have a finite duration — check the badge instead
-  const badge = document.querySelector('.ytp-live-badge')
-  return !!badge && !badge.hasAttribute('disabled')
+  // DVR live streams have finite duration — badge is visible only during live
+  const badge = document.querySelector<HTMLElement>('.ytp-live-badge')
+  return !!badge && badge.getBoundingClientRect().width > 0
 }
 
 function getThumbnail(videoId: string | null): string | undefined {
@@ -121,7 +121,8 @@ function poll(): void {
     const k = JSON.stringify({
       t: data.title, e: data.episodeTitle,
       l: data.isLive, p: data.paused,
-      c: data.isLive ? 0 : Math.floor(data.currentTime / 5)
+      c: data.isLive ? 0 : Math.floor(data.currentTime / 5),
+      i: data.imageUrl
     })
     if (k !== lastKey) { lastKey = k; report(data) }
   } else {
